@@ -15,78 +15,91 @@
 namespace bustub {
 
 LRUReplacer::LRUReplacer(size_t num_pages) {
-  size = 0;
-  head = num_pages;
-  frames.resize(num_pages);
+  size_ = 0;
+  head_ = num_pages;
+  frames_.resize(num_pages);
   for (size_t i = 0; i < num_pages; i++) {
-    frames[i].first = i;
-    frames[i].second = i;
-    pinned_frames.insert(i);
+    frames_[i].first = i;
+    frames_[i].second = i;
+    pinned_frames_.insert(i);
   }
 }
 
 LRUReplacer::~LRUReplacer() = default;
 
 bool LRUReplacer::Victim(frame_id_t *frame_id) {
-  if (size == 0)
+  std::lock_guard<std::mutex> lock(latch_);
+  if (size_ == 0) {
     return false;
-  else
-    size -= 1;
+  }
+  size_ -= 1;
 
-  frame_id_t tail = frames[head].first, ntail = frames[tail].first;
+  frame_id_t tail = frames_[head_].first;
+  frame_id_t ntail = frames_[tail].first;
 
-  pinned_frames.insert(tail);
+  pinned_frames_.insert(tail);
   *frame_id = tail;
 
-  frames[head].first = ntail;
-  frames[ntail].second = head;
+  frames_[head_].first = ntail;
+  frames_[ntail].second = head_;
 
-  frames[tail].first = tail;
-  frames[tail].second = tail;
-  if (size == 0) head = frames.size();
+  frames_[tail].first = tail;
+  frames_[tail].second = tail;
+  if (size_ == 0) {
+    head_ = frames_.size();
+  }
   return true;
 }
 
 void LRUReplacer::Pin(frame_id_t frame_id) {
-  if (pinned_frames.find(frame_id) != pinned_frames.end())
+  std::lock_guard<std::mutex> lock(latch_);
+
+  if (pinned_frames_.find(frame_id) != pinned_frames_.end()) {
     return;
-  else
-    pinned_frames.insert(frame_id);
-  size -= 1;
+  }
 
-  frame_id_t prev = frames[frame_id].first, next = frames[frame_id].second;
-  frames[prev].second = next;
-  frames[next].first = prev;
+  pinned_frames_.insert(frame_id);
+  size_ -= 1;
 
-  frames[frame_id].first = frame_id;
-  frames[frame_id].second = frame_id;
+  frame_id_t prev = frames_[frame_id].first;
+  frame_id_t next = frames_[frame_id].second;
 
-  if (head == frame_id) {
-    if (size > 0)
-      head = next;
-    else
-      head = frames.size() + 1;
+  frames_[prev].second = next;
+  frames_[next].first = prev;
+
+  frames_[frame_id].first = frame_id;
+  frames_[frame_id].second = frame_id;
+
+  if (head_ == frame_id) {
+    if (size_ > 0) {
+      head_ = next;
+    } else {
+      head_ = frames_.size() + 1;
+    }
   }
 }
 
 void LRUReplacer::Unpin(frame_id_t frame_id) {
-  if (pinned_frames.find(frame_id) == pinned_frames.end())
+  std::lock_guard<std::mutex> lock(latch_);
+
+  if (pinned_frames_.find(frame_id) == pinned_frames_.end()) {
     return;
-  else
-    pinned_frames.erase(frame_id);
-  size += 1;
-
-  if (head < static_cast<frame_id_t>(frames.size())) {
-    frame_id_t tail = frames[head].first;
-    frames[tail].second = frame_id;
-    frames[head].first = frame_id;
-
-    frames[frame_id].first = tail;
-    frames[frame_id].second = head;
   }
-  head = frame_id;
+
+  pinned_frames_.erase(frame_id);
+  size_ += 1;
+
+  if (head_ < static_cast<frame_id_t>(frames_.size())) {
+    frame_id_t tail = frames_[head_].first;
+    frames_[tail].second = frame_id;
+    frames_[head_].first = frame_id;
+
+    frames_[frame_id].first = tail;
+    frames_[frame_id].second = head_;
+  }
+  head_ = frame_id;
 }
 
-size_t LRUReplacer::Size() { return size; }
+size_t LRUReplacer::Size() { return size_; }
 
 }  // namespace bustub
