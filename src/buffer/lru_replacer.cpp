@@ -74,7 +74,7 @@ void LRUReplacer::Pin(frame_id_t frame_id) {
     if (size_ > 0) {
       head_ = next;
     } else {
-      head_ = frames_.size() + 1;
+      head_ = frames_.size();
     }
   }
 }

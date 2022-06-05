@@ -46,22 +46,21 @@ BufferPoolManager *ParallelBufferPoolManager::GetBufferPoolManager(page_id_t pag
 
 Page *ParallelBufferPoolManager::FetchPgImp(page_id_t page_id) {
   // Fetch page for page_id from responsible BufferPoolManagerInstance
-  assert(page_id % num_instances_ < start_instance_ || bpms_[page_id % num_instances_] != nullptr);
+  // assert(page_id % num_instances_ < start_instance_ || bpms_[page_id % num_instances_] != nullptr);
 
   return bpms_[page_id % num_instances_]->FetchPage(page_id);
 }
 
 bool ParallelBufferPoolManager::UnpinPgImp(page_id_t page_id, bool is_dirty) {
   // Unpin page_id from responsible BufferPoolManagerInstance
-  assert(page_id % num_instances_ < start_instance_ && bpms_[page_id % num_instances_] != nullptr);
+  // assert(page_id % num_instances_ < start_instance_ && bpms_[page_id % num_instances_] != nullptr);
 
   return bpms_[page_id % num_instances_]->UnpinPage(page_id, is_dirty);
 }
 
 bool ParallelBufferPoolManager::FlushPgImp(page_id_t page_id) {
   // Flush page_id from responsible BufferPoolManagerInstance
-  assert(page_id != INVALID_PAGE_ID && page_id % num_instances_ < start_instance_ &&
-         bpms_[page_id % num_instances_] != nullptr);
+  // assert(  page_id % num_instances_ < start_instance_ && bpms_[page_id % num_instances_!= nullptr);
   return bpms_[page_id % num_instances_]->FlushPage(page_id);
 }
 
@@ -72,6 +71,7 @@ Page *ParallelBufferPoolManager::NewPgImp(page_id_t *page_id) {
   // starting index and return nullptr
   // 2.   Bump the starting index (mod number of instances) to start search at a different BPMI each time this function
   // is called
+  std::lock_guard<std::mutex> lock(latch_);
   Page *ret = nullptr;
   while (start_instance_ < num_instances_) {
     if (bpms_[start_instance_] == nullptr) {
@@ -96,7 +96,7 @@ Page *ParallelBufferPoolManager::NewPgImp(page_id_t *page_id) {
 
 bool ParallelBufferPoolManager::DeletePgImp(page_id_t page_id) {
   // Delete page_id from responsible BufferPoolManagerInstance
-  assert(page_id % num_instances_ < start_instance_ || bpms_[page_id % num_instances_] != nullptr);
+  // assert(page_id % num_instances_ < start_instance_ || bpms_[page_id % num_instances_] != nullptr);
 
   return bpms_[page_id % num_instances_]->DeletePage(page_id);
 }

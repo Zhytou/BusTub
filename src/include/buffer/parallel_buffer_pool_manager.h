@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <mutex>
 #include <vector>
 
 #include "buffer/buffer_pool_manager.h"
@@ -91,6 +92,7 @@ class ParallelBufferPoolManager : public BufferPoolManager {
   void FlushAllPgsImp() override;
 
  private:
+  std::mutex latch_;
   std::vector<BufferPoolManager *> bpms_;
   size_t start_instance_, num_instances_, pool_size_;
   DiskManager *disk_manager_;

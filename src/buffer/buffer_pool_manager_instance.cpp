@@ -92,8 +92,9 @@ Page *BufferPoolManagerInstance::NewPgImp(page_id_t *page_id) {
   replacer_->Pin(frame_id);
 
   if (pages_[frame_id].IsDirty()) {
-    disk_manager_->WritePage(pages_[frame_id].GetPageId(), pages_->GetData());
+    disk_manager_->WritePage(pages_[frame_id].GetPageId(), pages_[frame_id].GetData());
   }
+
   //* delete the old page_id-frame_id record in page_table_
   page_table_.erase(pages_[frame_id].GetPageId());
 
@@ -138,7 +139,7 @@ Page *BufferPoolManagerInstance::FetchPgImp(page_id_t page_id) {
   replacer_->Pin(frame_id);
 
   if (pages_[frame_id].IsDirty()) {
-    disk_manager_->WritePage(pages_[frame_id].GetPageId(), pages_->GetData());
+    disk_manager_->WritePage(pages_[frame_id].GetPageId(), pages_[frame_id].GetData());
   }
 
   //* delete the old page_id-frame_id record in page_table_
@@ -172,6 +173,12 @@ bool BufferPoolManagerInstance::DeletePgImp(page_id_t page_id) {
     return false;
   }
 
+  if (pages_[frame_id].IsDirty()) {
+    assert(page_id != INVALID_PAGE_ID);
+    disk_manager_->WritePage(page_id, pages_[frame_id].GetData());
+  }
+
+  DeallocatePage(page_id);
   page_table_.erase(page_id);
 
   pages_[frame_id].ResetMemory();
@@ -197,9 +204,6 @@ bool BufferPoolManagerInstance::UnpinPgImp(page_id_t page_id, bool is_dirty) {
   }
 
   if (pages_[frame_id].GetPinCount() <= 0) {
-    if (pages_[frame_id].GetPinCount() == 0) {
-      replacer_->Unpin(frame_id);
-    }
     return false;
   }
 
