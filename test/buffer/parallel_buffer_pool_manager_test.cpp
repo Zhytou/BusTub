@@ -14,7 +14,6 @@
 #include <cstdio>
 #include <random>
 #include <string>
-#include <thread>
 #include "buffer/buffer_pool_manager.h"
 #include "gtest/gtest.h"
 

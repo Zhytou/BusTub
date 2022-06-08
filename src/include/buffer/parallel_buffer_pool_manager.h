@@ -11,8 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #pragma once
-
-#include <mutex>
+#include <mutex>  // NOLINT
 #include <vector>
 
 #include "buffer/buffer_pool_manager.h"
