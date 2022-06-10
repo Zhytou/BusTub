@@ -41,6 +41,11 @@ class HashTableBucketPage {
   HashTableBucketPage() = delete;
 
   /**
+   * @return the page ID of this page
+   */
+  page_id_t GetPageId();
+
+  /**
    * Scan the bucket and collect values that have the matching key
    *
    * @return true if at least one key matched
