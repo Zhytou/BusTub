@@ -51,8 +51,11 @@ template <typename KeyType, typename ValueType, typename KeyComparator>
 bool HASH_TABLE_BUCKET_TYPE::Insert(KeyType key, ValueType value, KeyComparator cmp) {
   Page *page = reinterpret_cast<Page *>(this);
   page->RLatch();
-  for (size_t i = 0; i < BUCKET_ARRAY_SIZE; i++) {
-    char mask = static_cast<char>(1 << (i % 8));
+  size_t i = 0;
+  char mask;
+
+  while (i < BUCKET_ARRAY_SIZE) {
+    mask = static_cast<char>(1 << (i % 8));
 
     if ((occupied_[i / 8] & mask) == 0) {
       break;
@@ -62,23 +65,18 @@ bool HASH_TABLE_BUCKET_TYPE::Insert(KeyType key, ValueType value, KeyComparator 
       page->RUnlatch();
       return false;
     }
+
+    i += 1;
   }
+
   page->RUnlatch();
   page->WLatch();
-  for (size_t i = 0; i < BUCKET_ARRAY_SIZE; i++) {
-    char mask = static_cast<char>(1 << (i % 8));
-
-    if ((occupied_[i / 8] & mask) == 0) {
-      array_[i].first = key;
-      array_[i].second = value;
-      occupied_[i / 8] = occupied_[i / 8] | mask;
-      readable_[i / 8] = readable_[i / 8] | mask;
-      page->WUnlatch();
-      return true;
-    }
-  }
+  array_[i].first = key;
+  array_[i].second = value;
+  occupied_[i / 8] = occupied_[i / 8] | mask;
+  readable_[i / 8] = readable_[i / 8] | mask;
   page->WUnlatch();
-  return false;
+  return true;
 }
 
 template <typename KeyType, typename ValueType, typename KeyComparator>

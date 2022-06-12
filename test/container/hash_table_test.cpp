@@ -29,6 +29,8 @@ TEST(HashTableTest, SampleTest) {
   auto *bpm = new BufferPoolManagerInstance(50, disk_manager);
   ExtendibleHashTable<int, int, IntComparator> ht("blah", bpm, IntComparator(), HashFunction<int>());
 
+  HashTableDirectoryPage *dir_page = reinterpret_cast<HashTableDirectoryPage *>(bpm->FetchPage(0));
+
   // insert a few values
   for (int i = 0; i < 5; i++) {
     ht.Insert(nullptr, i, i);
@@ -39,6 +41,7 @@ TEST(HashTableTest, SampleTest) {
   }
 
   ht.VerifyIntegrity();
+  dir_page->PrintDirectory();
 
   // check if the inserted values are all there
   for (int i = 0; i < 5; i++) {
@@ -49,6 +52,7 @@ TEST(HashTableTest, SampleTest) {
   }
 
   ht.VerifyIntegrity();
+  dir_page->PrintDirectory();
 
   // insert one more value for each key
   for (int i = 0; i < 5; i++) {
@@ -77,6 +81,7 @@ TEST(HashTableTest, SampleTest) {
   }
 
   ht.VerifyIntegrity();
+  dir_page->PrintDirectory();
 
   // look for a key that does not exist
   std::vector<int> res;
@@ -98,6 +103,7 @@ TEST(HashTableTest, SampleTest) {
   }
 
   ht.VerifyIntegrity();
+  dir_page->PrintDirectory();
 
   // delete all values
   for (int i = 0; i < 5; i++) {
@@ -110,6 +116,7 @@ TEST(HashTableTest, SampleTest) {
   }
 
   ht.VerifyIntegrity();
+  dir_page->PrintDirectory();
 
   disk_manager->ShutDown();
   remove("test.db");
