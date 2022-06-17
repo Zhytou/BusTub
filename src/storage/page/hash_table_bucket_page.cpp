@@ -39,7 +39,7 @@ bool HASH_TABLE_BUCKET_TYPE::GetValue(KeyType key, KeyComparator cmp, std::vecto
       break;
     }
 
-    if (readable_[i / 8] & mask && !cmp(key, array_[i].first)) {
+    if ((readable_[i / 8] & mask) != 0 && !cmp(key, array_[i].first)) {
       result->push_back(array_[i].second);
     }
   }
@@ -50,31 +50,41 @@ bool HASH_TABLE_BUCKET_TYPE::GetValue(KeyType key, KeyComparator cmp, std::vecto
 template <typename KeyType, typename ValueType, typename KeyComparator>
 bool HASH_TABLE_BUCKET_TYPE::Insert(KeyType key, ValueType value, KeyComparator cmp) {
   Page *page = reinterpret_cast<Page *>(this);
-  page->RLatch();
-  size_t i = 0;
-  char mask;
+  page->WLatch();
 
-  while (i < BUCKET_ARRAY_SIZE) {
+  size_t available_record_idx = BUCKET_ARRAY_SIZE;
+  char mask;
+  for (size_t i = 0; i < BUCKET_ARRAY_SIZE; i++) {
     mask = static_cast<char>(1 << (i % 8));
 
     if ((occupied_[i / 8] & mask) == 0) {
+      if (available_record_idx == BUCKET_ARRAY_SIZE) {
+        available_record_idx = i;
+      }
       break;
     }
 
-    if ((readable_[i / 8] & mask) && !cmp(key, array_[i].first) && value == array_[i].second) {
-      page->RUnlatch();
+    if ((readable_[i / 8] & mask) != 0 && !cmp(key, array_[i].first) && value == array_[i].second) {
+      page->WUnlatch();
       return false;
     }
 
-    i += 1;
+    if (available_record_idx == BUCKET_ARRAY_SIZE && (readable_[i / 8] & mask) == 0) {
+      available_record_idx = i;
+    }
   }
 
-  page->RUnlatch();
-  page->WLatch();
-  array_[i].first = key;
-  array_[i].second = value;
-  occupied_[i / 8] = occupied_[i / 8] | mask;
-  readable_[i / 8] = readable_[i / 8] | mask;
+  if (available_record_idx == BUCKET_ARRAY_SIZE) {
+    page->WUnlatch();
+    return false;
+  }
+
+  mask = static_cast<char>(1 << (available_record_idx % 8));
+  array_[available_record_idx].first = key;
+  array_[available_record_idx].second = value;
+  occupied_[available_record_idx / 8] = occupied_[available_record_idx / 8] | mask;
+  readable_[available_record_idx / 8] = readable_[available_record_idx / 8] | mask;
+
   page->WUnlatch();
   return true;
 }

@@ -80,6 +80,12 @@ class ExtendibleHashTable {
   uint32_t GetGlobalDepth();
 
   /**
+   * Returns the bucket size
+   *
+   */
+  uint64_t GetBucketSize() const;
+
+  /**
    * Helper function to verify the integrity of the extendible hash table's directory.  Do not touch.
    */
   void VerifyIntegrity();

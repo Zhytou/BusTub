@@ -134,16 +134,35 @@ void HashTableDirectoryPage::DecrLocalDepth(uint32_t bucket_idx) {
   page->WUnlatch();
 }
 
+uint32_t HashTableDirectoryPage::GetLocalDepthMask(uint32_t bucket_idx) {
+  Page *page = reinterpret_cast<Page *>(this);
+  page->RLatch();
+  uint32_t mask = 1;
+  mask = mask << local_depths_[bucket_idx];
+  page->RUnlatch();
+  return mask - 1;
+}
+
 uint32_t HashTableDirectoryPage::GetLocalHighBit(uint32_t bucket_idx) {
   // find the split image
   Page *page = reinterpret_cast<Page *>(this);
   page->RLatch();
-  uint32_t sibling_bucket_idx = (GetGlobalDepthMask() >> 1) & bucket_idx;
-  if (sibling_bucket_idx == bucket_idx && global_depth_ >= 1) {
-    sibling_bucket_idx += 1 << (global_depth_ - 1);
+  uint32_t high_bit = 1 << local_depths_[bucket_idx];
+  page->RUnlatch();
+  return high_bit;
+}
+
+uint32_t HashTableDirectoryPage::FindFirstBucket(const page_id_t &page_id) {
+  Page *page = reinterpret_cast<Page *>(this);
+  page->RLatch();
+  for (uint32_t i = 0; i < Size(); i++) {
+    if (bucket_page_ids_[i] == page_id) {
+      page->RUnlatch();
+      return i;
+    }
   }
   page->RUnlatch();
-  return sibling_bucket_idx;
+  return Size();
 }
 
 /**

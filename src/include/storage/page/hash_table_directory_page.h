@@ -172,6 +172,14 @@ class HashTableDirectoryPage {
   uint32_t GetLocalHighBit(uint32_t bucket_idx);
 
   /**
+   * Gets the first bucket index whose bucket page id equals to the param
+   *
+   * @param bucket_idx bucket index to lookup
+   * @return the high bit corresponding to the bucket's local depth
+   */
+  uint32_t FindFirstBucket(const page_id_t &page_id);
+
+  /**
    * VerifyIntegrity
    *
    * Verify the following invariants:

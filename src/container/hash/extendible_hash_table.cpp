@@ -62,7 +62,7 @@ uint32_t HASH_TABLE_TYPE::Hash(KeyType key) {
 
 template <typename KeyType, typename ValueType, typename KeyComparator>
 inline uint32_t HASH_TABLE_TYPE::KeyToDirectoryIndex(KeyType key, HashTableDirectoryPage *dir_page) {
-  return Hash(key) & dir_page->GetGlobalDepthMask();
+  return Hash(key) & (dir_page->GetGlobalDepthMask());
 }
 
 template <typename KeyType, typename ValueType, typename KeyComparator>
@@ -78,6 +78,11 @@ HashTableDirectoryPage *HASH_TABLE_TYPE::FetchDirectoryPage() {
 template <typename KeyType, typename ValueType, typename KeyComparator>
 HASH_TABLE_BUCKET_TYPE *HASH_TABLE_TYPE::FetchBucketPage(page_id_t bucket_page_id) {
   return reinterpret_cast<HASH_TABLE_BUCKET_TYPE *>(buffer_pool_manager_->FetchPage(bucket_page_id));
+}
+
+template <typename KeyType, typename ValueType, typename KeyComparator>
+uint64_t HASH_TABLE_TYPE::GetBucketSize() const {
+  return static_cast<uint64_t>(BUCKET_ARRAY_SIZE);
 }
 
 /*****************************************************************************
@@ -112,17 +117,15 @@ bool HASH_TABLE_TYPE::Insert(Transaction *transaction, const KeyType &key, const
   table_latch_.RLock();
 
   HashTableDirectoryPage *dir_page = FetchDirectoryPage();
-  uint32_t bucket_idx = KeyToDirectoryIndex(key, dir_page);
-  HASH_TABLE_BUCKET_TYPE *bucket_page;
+  HASH_TABLE_BUCKET_TYPE *bucket_page = FetchBucketPage(KeyToPageId(key, dir_page));
 
   // if KeyToPageId equals to zero which means that the concerning bucket_page is not created
-  if (KeyToPageId(key, dir_page) == 0) {
-    bucket_page = nullptr;
-  } else {
-    bucket_page = FetchBucketPage(KeyToPageId(key, dir_page));
+  if (bucket_page->GetPageId() == dir_page->GetPageId()) {
+    table_latch_.RUnlock();
+    return false;
   }
 
-  if (bucket_page != nullptr && !bucket_page->IsFull()) {
+  if (!bucket_page->IsFull()) {
     ret = bucket_page->Insert(key, value, comparator_);
     // TODO(zhy): should i unpin the dir_page and bucket_page ?
     buffer_pool_manager_->UnpinPage(dir_page->GetPageId(), false);
@@ -133,16 +136,25 @@ bool HASH_TABLE_TYPE::Insert(Transaction *transaction, const KeyType &key, const
   }
 
   table_latch_.RUnlock();
+  return SplitInsert(transaction, key, value);
+}
+
+template <typename KeyType, typename ValueType, typename KeyComparator>
+bool HASH_TABLE_TYPE::SplitInsert(Transaction *transaction, const KeyType &key, const ValueType &value) {
   table_latch_.WLock();
+
+  HashTableDirectoryPage *dir_page = FetchDirectoryPage();
+  uint32_t bucket_idx = KeyToDirectoryIndex(key, dir_page);
+  HASH_TABLE_BUCKET_TYPE *bucket_page = FetchBucketPage(KeyToPageId(key, dir_page));
 
   // if the local depth already equals to the global depth, increase the global depth
   if (dir_page->GetGlobalDepth() == dir_page->GetLocalDepth(bucket_idx)) {
     dir_page->IncrGlobalDepth();
     // make sure all the bucket_id in dir_page are correctly pointed to the corresponding page(bucket)
-    for (uint32_t i = dir_page->Size() / 2; i < dir_page->Size(); i++) {
-      uint32_t sibling_i = dir_page->GetLocalHighBit(i);
-      dir_page->SetBucketPageId(i, dir_page->GetBucketPageId(sibling_i));
-      dir_page->SetLocalDepth(i, dir_page->GetLocalDepth(sibling_i));
+    for (uint32_t i = 0; i < dir_page->Size() / 2; i++) {
+      uint32_t sibling_i = i + dir_page->Size() / 2;
+      dir_page->SetBucketPageId(sibling_i, dir_page->GetBucketPageId(i));
+      dir_page->SetLocalDepth(sibling_i, dir_page->GetLocalDepth(i));
     }
   }
 
@@ -156,23 +168,31 @@ bool HASH_TABLE_TYPE::Insert(Transaction *transaction, const KeyType &key, const
   buffer_pool_manager_->UnpinPage(new_bucket_page_id, false);
 
   HASH_TABLE_BUCKET_TYPE *new_bucket_page = FetchBucketPage(new_bucket_page_id);
-  // find the split image(sibling bucket) index using getlocalhighbit method
-  uint32_t new_bucket_idx = dir_page->GetLocalHighBit(bucket_idx);
 
-  // make the dir_page point to the new bucket
-  dir_page->SetBucketPageId(new_bucket_idx, new_bucket_page_id);
+  // change all the page_ids
+  bucket_idx = dir_page->FindFirstBucket(bucket_page->GetPageId());
+  while (bucket_idx < dir_page->Size()) {
+    // find the split image(sibling bucket) index using getlocalhighbit method
+    uint32_t new_bucket_idx = bucket_idx + dir_page->GetLocalHighBit(bucket_idx);
 
-  // change the local depth for both old and new bucket
-  dir_page->IncrLocalDepth(bucket_idx);
-  dir_page->SetLocalDepth(new_bucket_idx, dir_page->GetLocalDepth(bucket_idx));
+    // make the dir_page point to the new bucket
+    dir_page->SetBucketPageId(new_bucket_idx, new_bucket_page_id);
+
+    // change the local depth for both old and new bucket
+    dir_page->IncrLocalDepth(bucket_idx);
+    dir_page->SetLocalDepth(new_bucket_idx, dir_page->GetLocalDepth(bucket_idx));
+
+    // move to the next bucket
+    bucket_idx += dir_page->GetLocalHighBit(bucket_idx);
+  }
 
   // move the records in old bucket into new bucket if them reach the condition
-  for (uint32_t i = 0; bucket_page && bucket_page->IsOccupied(i); i++) {
+  for (uint32_t i = 0; bucket_page->IsOccupied(i); i++) {
     if (!bucket_page->IsReadable(i)) {
       continue;
     }
     KeyType key_i = bucket_page->KeyAt(i);
-    if (KeyToDirectoryIndex(key_i, dir_page) == bucket_idx) {
+    if (static_cast<page_id_t>(KeyToPageId(key_i, dir_page)) == bucket_page->GetPageId()) {
       continue;
     }
     ValueType value_i = bucket_page->ValueAt(i);
@@ -180,27 +200,15 @@ bool HASH_TABLE_TYPE::Insert(Transaction *transaction, const KeyType &key, const
     new_bucket_page->Insert(key_i, value_i, comparator_);
   }
 
-  // insert the key into corresponding bucket depending on hash(key) & global depth mask
-  if (bucket_page && KeyToDirectoryIndex(key, dir_page) == bucket_idx) {
-    ret = bucket_page->Insert(key, value, comparator_);
-  } else {
-    ret = new_bucket_page->Insert(key, value, comparator_);
-  }
-
   buffer_pool_manager_->UnpinPage(dir_page->GetPageId(), true);
-  if (bucket_page) {
-    buffer_pool_manager_->UnpinPage(bucket_page->GetPageId(), true);
-  }
+  buffer_pool_manager_->UnpinPage(bucket_page->GetPageId(), true);
   buffer_pool_manager_->UnpinPage(new_bucket_page->GetPageId(), true);
 
   table_latch_.WUnlock();
 
-  return ret;
-}
-
-template <typename KeyType, typename ValueType, typename KeyComparator>
-bool HASH_TABLE_TYPE::SplitInsert(Transaction *transaction, const KeyType &key, const ValueType &value) {
-  return false;
+  // insert the key into corresponding bucket depending on hash(key) & global depth mask
+  // using Insert method to prevent recursive split
+  return Insert(transaction, key, value);
 }
 
 /*****************************************************************************
@@ -213,33 +221,54 @@ bool HASH_TABLE_TYPE::Remove(Transaction *transaction, const KeyType &key, const
   table_latch_.RLock();
 
   HashTableDirectoryPage *dir_page = FetchDirectoryPage();
-  uint32_t bucket_idx = KeyToDirectoryIndex(key, dir_page);
-  HASH_TABLE_BUCKET_TYPE *bucket_page;
+  HASH_TABLE_BUCKET_TYPE *bucket_page = FetchBucketPage(KeyToPageId(key, dir_page));
 
-  if (KeyToPageId(key, dir_page) == 0) {
+  if (bucket_page->GetPageId() == dir_page->GetPageId()) {
     table_latch_.RUnlock();
     return false;
   }
-  bucket_page = FetchBucketPage(KeyToPageId(key, dir_page));
 
   ret = bucket_page->Remove(key, value, comparator_);
 
   if (bucket_page->IsEmpty()) {
-    // find sibling bucket
-    uint32_t sibling_bucket_idx = dir_page->GetLocalHighBit(bucket_idx);
-    // set the pointer pointing to the sibling bucket in directory page
-    dir_page->SetBucketPageId(bucket_idx, dir_page->GetBucketPageId(sibling_bucket_idx));
-    // decrease the sibling bucket local depth
-    dir_page->DecrLocalDepth(sibling_bucket_idx);
-    // set the local depth as the decreased sibling local depth
-    dir_page->SetLocalDepth(bucket_idx, dir_page->GetLocalDepth(sibling_bucket_idx));
+    table_latch_.RUnlock();
+    Merge(transaction, key, value);
+    table_latch_.RLock();
   }
+
+  buffer_pool_manager_->UnpinPage(dir_page->GetPageId(), true);
+  buffer_pool_manager_->UnpinPage(bucket_page->GetPageId(), ret);
+
+  table_latch_.RUnlock();
+
+  return ret;
+}
+
+/*****************************************************************************
+ * MERGE
+ *****************************************************************************/
+template <typename KeyType, typename ValueType, typename KeyComparator>
+void HASH_TABLE_TYPE::Merge(Transaction *transaction, const KeyType &key, const ValueType &value) {
+  table_latch_.WLock();
+
+  HashTableDirectoryPage *dir_page = FetchDirectoryPage();
+  uint32_t bucket_idx = KeyToDirectoryIndex(key, dir_page);
+
+  // find sibling bucket
+  uint32_t sibling_bucket_idx = dir_page->GetLocalHighBit(bucket_idx);
+  // set the pointer pointing to the sibling bucket in directory page
+  dir_page->SetBucketPageId(bucket_idx, dir_page->GetBucketPageId(sibling_bucket_idx));
+  // decrease the sibling bucket local depth
+  dir_page->DecrLocalDepth(sibling_bucket_idx);
+  // set the local depth as the decreased sibling local depth
+  dir_page->SetLocalDepth(bucket_idx, dir_page->GetLocalDepth(sibling_bucket_idx));
 
   if (dir_page->CanShrink()) {
     // change the pointer in the directory page
     // for the bucket whose index in direcatory page higher than half of the current hash table size(1 << global
     // depth), they should move their contents into their sibling buckets or just change the pointer in the directory
     // page if their sibling page does not exist(page id == 0)
+
     for (uint32_t i = dir_page->Size() / 2; i < dir_page->Size(); i++) {
       page_id_t bucket_i_page_id = dir_page->GetBucketPageId(i);
 
@@ -287,19 +316,8 @@ bool HASH_TABLE_TYPE::Remove(Transaction *transaction, const KeyType &key, const
     dir_page->DecrGlobalDepth();
   }
 
-  buffer_pool_manager_->UnpinPage(dir_page->GetPageId(), true);
-  buffer_pool_manager_->UnpinPage(bucket_page->GetPageId(), ret);
-
-  table_latch_.RUnlock();
-
-  return ret;
+  table_latch_.WUnlock();
 }
-
-/*****************************************************************************
- * MERGE
- *****************************************************************************/
-template <typename KeyType, typename ValueType, typename KeyComparator>
-void HASH_TABLE_TYPE::Merge(Transaction *transaction, const KeyType &key, const ValueType &value) {}
 
 /*****************************************************************************
  * GETGLOBALDEPTH - DO NOT TOUCH
