@@ -160,7 +160,11 @@ void HASH_TABLE_BUCKET_TYPE::SetReadable(uint32_t bucket_idx) {
 
 template <typename KeyType, typename ValueType, typename KeyComparator>
 bool HASH_TABLE_BUCKET_TYPE::IsFull() {
-  return occupied_[(BUCKET_ARRAY_SIZE - 1) / 8] == static_cast<char>(255);
+  Page *page = reinterpret_cast<Page *>(this);
+  page->RLatch();
+  bool ret = readable_[(BUCKET_ARRAY_SIZE - 1) / 8] == static_cast<char>(255);
+  page->RUnlatch();
+  return ret;
 }
 
 template <typename KeyType, typename ValueType, typename KeyComparator>
@@ -181,7 +185,7 @@ template <typename KeyType, typename ValueType, typename KeyComparator>
 bool HASH_TABLE_BUCKET_TYPE::IsEmpty() {
   Page *page = reinterpret_cast<Page *>(this);
   page->RLatch();
-  bool ret = occupied_[0] == static_cast<char>(0);
+  bool ret = readable_[0] == static_cast<char>(0);
   page->RUnlatch();
   return ret;
 }

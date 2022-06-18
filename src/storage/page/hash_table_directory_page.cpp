@@ -46,8 +46,7 @@ uint32_t HashTableDirectoryPage::GetGlobalDepth() {
 uint32_t HashTableDirectoryPage::GetGlobalDepthMask() {
   Page *page = reinterpret_cast<Page *>(this);
   page->RLatch();
-  uint32_t mask = 1;
-  mask = mask << global_depth_;
+  uint32_t mask = 1 << global_depth_;
   page->RUnlatch();
   return mask - 1;
 }
