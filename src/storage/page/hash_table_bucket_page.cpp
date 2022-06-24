@@ -57,25 +57,27 @@ bool HASH_TABLE_BUCKET_TYPE::Insert(KeyType key, ValueType value, KeyComparator 
   for (size_t i = 0; i < BUCKET_ARRAY_SIZE; i++) {
     mask = static_cast<char>(1 << (i % 8));
 
-    if ((occupied_[i / 8] & mask) == 0) {
+    if ((occupied_[i / 8] & mask) == static_cast<char>(0)) {
       if (available_record_idx == BUCKET_ARRAY_SIZE) {
         available_record_idx = i;
       }
       break;
     }
 
-    if ((readable_[i / 8] & mask) != 0 && !cmp(key, array_[i].first) && value == array_[i].second) {
+    if ((readable_[i / 8] & mask) && !cmp(key, array_[i].first) && value == array_[i].second) {
       page->WUnlatch();
+      LOG_DEBUG("duplicate values for the same key");
       return false;
     }
 
-    if (available_record_idx == BUCKET_ARRAY_SIZE && (readable_[i / 8] & mask) == 0) {
+    if (available_record_idx == BUCKET_ARRAY_SIZE && (readable_[i / 8] & mask) == static_cast<char>(0)) {
       available_record_idx = i;
     }
   }
 
   if (available_record_idx == BUCKET_ARRAY_SIZE) {
     page->WUnlatch();
+    LOG_DEBUG("the bucket page is full");
     return false;
   }
 
@@ -96,7 +98,7 @@ bool HASH_TABLE_BUCKET_TYPE::Remove(KeyType key, ValueType value, KeyComparator 
   for (size_t i = 0; i < BUCKET_ARRAY_SIZE; i++) {
     char mask = static_cast<char>(1 << (i % 8));
 
-    if ((occupied_[i / 8] & mask) == 0) {
+    if ((occupied_[i / 8] & mask) == static_cast<char>(0)) {
       break;
     }
     if ((readable_[i / 8] & mask) && !cmp(key, array_[i].first) && value == array_[i].second) {
@@ -131,7 +133,7 @@ void HASH_TABLE_BUCKET_TYPE::RemoveAt(uint32_t bucket_idx) {
 template <typename KeyType, typename ValueType, typename KeyComparator>
 bool HASH_TABLE_BUCKET_TYPE::IsOccupied(uint32_t bucket_idx) const {
   char mask = static_cast<char>(1 << (bucket_idx % 8));
-  return occupied_[bucket_idx / 8] & mask;
+  return (occupied_[bucket_idx / 8] & mask) != static_cast<char>(0);
 }
 
 template <typename KeyType, typename ValueType, typename KeyComparator>
@@ -146,7 +148,7 @@ void HASH_TABLE_BUCKET_TYPE::SetOccupied(uint32_t bucket_idx) {
 template <typename KeyType, typename ValueType, typename KeyComparator>
 bool HASH_TABLE_BUCKET_TYPE::IsReadable(uint32_t bucket_idx) const {
   char mask = static_cast<char>(1 << (bucket_idx % 8));
-  return readable_[bucket_idx / 8] & mask;
+  return (readable_[bucket_idx / 8] & mask) != static_cast<char>(0);
 }
 
 template <typename KeyType, typename ValueType, typename KeyComparator>
@@ -162,7 +164,13 @@ template <typename KeyType, typename ValueType, typename KeyComparator>
 bool HASH_TABLE_BUCKET_TYPE::IsFull() {
   Page *page = reinterpret_cast<Page *>(this);
   page->RLatch();
-  bool ret = readable_[(BUCKET_ARRAY_SIZE - 1) / 8] == static_cast<char>(255);
+  bool ret = true;
+  for (size_t i = 0; i < BUCKET_ARRAY_SIZE; i++) {
+    if (!IsOccupied(i) || (IsOccupied(i) && !IsReadable(i))) {
+      ret = false;
+      break;
+    }
+  }
   page->RUnlatch();
   return ret;
 }
