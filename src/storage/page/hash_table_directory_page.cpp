@@ -143,7 +143,6 @@ uint32_t HashTableDirectoryPage::GetLocalDepthMask(uint32_t bucket_idx) {
 }
 
 uint32_t HashTableDirectoryPage::GetLocalHighBit(uint32_t bucket_idx) {
-  // find the split image
   Page *page = reinterpret_cast<Page *>(this);
   page->RLatch();
   uint32_t high_bit = 1 << local_depths_[bucket_idx];

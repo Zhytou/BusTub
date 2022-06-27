@@ -18,6 +18,7 @@
 
 #include "buffer/buffer_pool_manager.h"
 #include "buffer/lru_replacer.h"
+#include "common/logger.h"
 #include "recovery/log_manager.h"
 #include "storage/disk/disk_manager.h"
 #include "storage/page/page.h"
@@ -120,6 +121,21 @@ class BufferPoolManagerInstance : public BufferPoolManager {
    * @param page_id
    */
   void ValidatePageId(page_id_t page_id) const;
+
+  void PrintBufferPool() {
+    LOG_DEBUG("======== BUFFER POOL ========");
+    LOG_DEBUG("| frame_id | page_id | pinned_count | is_dirty |");
+    for (unsigned i = 0; i < pool_size_; i++) {
+      if (pages_[i].GetPageId() == INVALID_PAGE_ID) {
+        LOG_DEBUG("|   %u   | invalid page |    0    |    0     |", i);
+
+      } else {
+        LOG_DEBUG("|   %u   |       %d     |    %d   |    %d    |", i, pages_[i].GetPageId(), pages_[i].GetPinCount(),
+                  pages_[i].IsDirty());
+      }
+    }
+    LOG_DEBUG("================ END BUFFER POOL ================");
+  }
 
   /** Number of pages in the buffer pool. */
   const size_t pool_size_;

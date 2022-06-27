@@ -22,61 +22,51 @@ namespace bustub {
 template <typename KeyType, typename ValueType, typename KeyComparator>
 page_id_t HASH_TABLE_BUCKET_TYPE::GetPageId() {
   Page *page = reinterpret_cast<Page *>(this);
-  page->RLatch();
   page_id_t page_id = page->GetPageId();
-  page->RUnlatch();
   return page_id;
 }
 
 template <typename KeyType, typename ValueType, typename KeyComparator>
 bool HASH_TABLE_BUCKET_TYPE::GetValue(KeyType key, KeyComparator cmp, std::vector<ValueType> *result) {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->RLatch();
   for (size_t i = 0; i < BUCKET_ARRAY_SIZE; i++) {
-    char mask = static_cast<char>(1 << (i % 8));
-
-    if ((occupied_[i / 8] & mask) == 0) {
+    if (!IsOccupied(i)) {
       break;
     }
 
-    if ((readable_[i / 8] & mask) != 0 && !cmp(key, array_[i].first)) {
+    if (IsReadable(i) && !cmp(key, array_[i].first)) {
       result->push_back(array_[i].second);
     }
   }
-  page->RUnlatch();
   return !(result->empty());
 }
 
 template <typename KeyType, typename ValueType, typename KeyComparator>
 bool HASH_TABLE_BUCKET_TYPE::Insert(KeyType key, ValueType value, KeyComparator cmp) {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->WLatch();
+  assert(!IsFull());
 
   size_t available_record_idx = BUCKET_ARRAY_SIZE;
   char mask;
   for (size_t i = 0; i < BUCKET_ARRAY_SIZE; i++) {
     mask = static_cast<char>(1 << (i % 8));
 
-    if ((occupied_[i / 8] & mask) == static_cast<char>(0)) {
+    if (!IsOccupied(i)) {
       if (available_record_idx == BUCKET_ARRAY_SIZE) {
         available_record_idx = i;
       }
       break;
     }
 
-    if ((readable_[i / 8] & mask) && !cmp(key, array_[i].first) && value == array_[i].second) {
-      page->WUnlatch();
-      LOG_DEBUG("duplicate values for the same key");
+    if (IsReadable(i) && !cmp(key, array_[i].first) && value == array_[i].second) {
+      // LOG_DEBUG("duplicate values for the same key");
       return false;
     }
 
-    if (available_record_idx == BUCKET_ARRAY_SIZE && (readable_[i / 8] & mask) == static_cast<char>(0)) {
+    if (available_record_idx == BUCKET_ARRAY_SIZE && !IsReadable(i)) {
       available_record_idx = i;
     }
   }
 
   if (available_record_idx == BUCKET_ARRAY_SIZE) {
-    page->WUnlatch();
     LOG_DEBUG("the bucket page is full");
     return false;
   }
@@ -87,27 +77,21 @@ bool HASH_TABLE_BUCKET_TYPE::Insert(KeyType key, ValueType value, KeyComparator 
   occupied_[available_record_idx / 8] = occupied_[available_record_idx / 8] | mask;
   readable_[available_record_idx / 8] = readable_[available_record_idx / 8] | mask;
 
-  page->WUnlatch();
   return true;
 }
 
 template <typename KeyType, typename ValueType, typename KeyComparator>
 bool HASH_TABLE_BUCKET_TYPE::Remove(KeyType key, ValueType value, KeyComparator cmp) {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->WLatch();
   for (size_t i = 0; i < BUCKET_ARRAY_SIZE; i++) {
-    char mask = static_cast<char>(1 << (i % 8));
-
-    if ((occupied_[i / 8] & mask) == static_cast<char>(0)) {
+    if (!IsOccupied(i)) {
       break;
     }
-    if ((readable_[i / 8] & mask) && !cmp(key, array_[i].first) && value == array_[i].second) {
-      readable_[i / 8] = readable_[i / 8] & (static_cast<char>(255) - mask);
-      page->WUnlatch();
+    if (IsReadable(i) && !cmp(key, array_[i].first) && value == array_[i].second) {
+      RemoveAt(i);
       return true;
     }
   }
-  page->WUnlatch();
+
   return false;
 }
 
@@ -123,11 +107,8 @@ ValueType HASH_TABLE_BUCKET_TYPE::ValueAt(uint32_t bucket_idx) const {
 
 template <typename KeyType, typename ValueType, typename KeyComparator>
 void HASH_TABLE_BUCKET_TYPE::RemoveAt(uint32_t bucket_idx) {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->WLatch();
   char mask = static_cast<char>(1 << (bucket_idx % 8));
   readable_[bucket_idx / 8] = readable_[bucket_idx / 8] & (static_cast<char>(255) - mask);
-  page->WUnlatch();
 }
 
 template <typename KeyType, typename ValueType, typename KeyComparator>
@@ -138,11 +119,8 @@ bool HASH_TABLE_BUCKET_TYPE::IsOccupied(uint32_t bucket_idx) const {
 
 template <typename KeyType, typename ValueType, typename KeyComparator>
 void HASH_TABLE_BUCKET_TYPE::SetOccupied(uint32_t bucket_idx) {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->WLatch();
   char mask = static_cast<char>(1 << (bucket_idx % 8));
   occupied_[bucket_idx / 8] = occupied_[bucket_idx / 8] | mask;
-  page->WUnlatch();
 }
 
 template <typename KeyType, typename ValueType, typename KeyComparator>
@@ -153,17 +131,12 @@ bool HASH_TABLE_BUCKET_TYPE::IsReadable(uint32_t bucket_idx) const {
 
 template <typename KeyType, typename ValueType, typename KeyComparator>
 void HASH_TABLE_BUCKET_TYPE::SetReadable(uint32_t bucket_idx) {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->WLatch();
   char mask = static_cast<char>(1 << (bucket_idx % 8));
   readable_[bucket_idx / 8] = readable_[bucket_idx / 8] | mask;
-  page->WUnlatch();
 }
 
 template <typename KeyType, typename ValueType, typename KeyComparator>
 bool HASH_TABLE_BUCKET_TYPE::IsFull() {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->RLatch();
   bool ret = true;
   for (size_t i = 0; i < BUCKET_ARRAY_SIZE; i++) {
     if (!IsOccupied(i) || (IsOccupied(i) && !IsReadable(i))) {
@@ -171,30 +144,33 @@ bool HASH_TABLE_BUCKET_TYPE::IsFull() {
       break;
     }
   }
-  page->RUnlatch();
   return ret;
 }
 
 template <typename KeyType, typename ValueType, typename KeyComparator>
 uint32_t HASH_TABLE_BUCKET_TYPE::NumReadable() {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->RLatch();
   uint32_t ret = 0;
   for (size_t i = 0; i < BUCKET_ARRAY_SIZE; i++) {
-    char mask = static_cast<char>(1 << (i % 8));
-
-    ret += (occupied_[i / 8] & mask) ? 1 : 0;
+    if (!IsOccupied(i)) {
+      break;
+    }
+    ret += IsReadable(i) ? 1 : 0;
   }
-  page->RUnlatch();
   return ret;
 }
 
 template <typename KeyType, typename ValueType, typename KeyComparator>
 bool HASH_TABLE_BUCKET_TYPE::IsEmpty() {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->RLatch();
-  bool ret = readable_[0] == static_cast<char>(0);
-  page->RUnlatch();
+  bool ret = true;
+  for (size_t i = 0; i < BUCKET_ARRAY_SIZE; i++) {
+    if (IsOccupied(i) && IsReadable(i)) {
+      ret = false;
+      break;
+    }
+    if (!IsOccupied(i)) {
+      break;
+    }
+  }
   return ret;
 }
 

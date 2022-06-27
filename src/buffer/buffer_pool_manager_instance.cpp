@@ -86,6 +86,7 @@ Page *BufferPoolManagerInstance::NewPgImp(page_id_t *page_id) {
     free_list_.pop_front();
   } else {
     if (!replacer_->Victim(&frame_id)) {
+      PrintBufferPool();
       return nullptr;
     }
   }
