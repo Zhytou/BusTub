@@ -151,6 +151,14 @@ TEST(HashTableTest, MyTest) {
   ht.VerifyIntegrity();
   dir_page->PrintDirectory();
 
+  ht.Remove(nullptr, 10, 100);
+  ht.VerifyIntegrity();
+  dir_page->PrintDirectory();
+
+  ht.Remove(nullptr, 20, 200);
+  ht.VerifyIntegrity();
+  dir_page->PrintDirectory();
+
   disk_manager->ShutDown();
   remove("test.db");
   delete disk_manager;

@@ -84,6 +84,7 @@ template <typename KeyType, typename ValueType, typename KeyComparator>
 bool HASH_TABLE_BUCKET_TYPE::Remove(KeyType key, ValueType value, KeyComparator cmp) {
   for (size_t i = 0; i < BUCKET_ARRAY_SIZE; i++) {
     if (!IsOccupied(i)) {
+      // LOG_DEBUG("unable to remove the key value pair, can not find it");
       break;
     }
     if (IsReadable(i) && !cmp(key, array_[i].first) && value == array_[i].second) {

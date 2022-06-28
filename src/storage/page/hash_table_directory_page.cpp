@@ -19,79 +19,42 @@
 namespace bustub {
 page_id_t HashTableDirectoryPage::GetPageId() const { return page_id_; }
 
-void HashTableDirectoryPage::SetPageId(bustub::page_id_t page_id) {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->WLatch();
-  page_id_ = page_id;
-  page->WUnlatch();
-}
+void HashTableDirectoryPage::SetPageId(bustub::page_id_t page_id) { page_id_ = page_id; }
 
 lsn_t HashTableDirectoryPage::GetLSN() const { return lsn_; }
 
-void HashTableDirectoryPage::SetLSN(lsn_t lsn) {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->WLatch();
-  lsn_ = lsn;
-  page->WUnlatch();
-}
+void HashTableDirectoryPage::SetLSN(lsn_t lsn) { lsn_ = lsn; }
 
 uint32_t HashTableDirectoryPage::GetGlobalDepth() {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->RLatch();
   uint32_t global_depth = global_depth_;
-  page->RUnlatch();
   return global_depth;
 }
 
 uint32_t HashTableDirectoryPage::GetGlobalDepthMask() {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->RLatch();
   uint32_t mask = 1 << global_depth_;
-  page->RUnlatch();
   return mask - 1;
 }
 
-void HashTableDirectoryPage::IncrGlobalDepth() {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->WLatch();
-  global_depth_++;
-  page->WUnlatch();
-}
+void HashTableDirectoryPage::IncrGlobalDepth() { global_depth_++; }
 
-void HashTableDirectoryPage::DecrGlobalDepth() {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->WLatch();
-  global_depth_--;
-  page->WUnlatch();
-}
+void HashTableDirectoryPage::DecrGlobalDepth() { global_depth_--; }
 
 page_id_t HashTableDirectoryPage::GetBucketPageId(uint32_t bucket_idx) {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->RLatch();
   page_id_t bucket_page_id = bucket_page_ids_[bucket_idx];
-  page->RUnlatch();
   return bucket_page_id;
 }
 
 void HashTableDirectoryPage::SetBucketPageId(uint32_t bucket_idx, page_id_t bucket_page_id) {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->WLatch();
   bucket_page_ids_[bucket_idx] = bucket_page_id;
-  page->WUnlatch();
 }
 
 uint32_t HashTableDirectoryPage::Size() {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->RLatch();
   uint32_t size = 1 << global_depth_;
-  page->RUnlatch();
   return size;
 }
 
 bool HashTableDirectoryPage::CanShrink() {
   // only if all the local depth of the buckets are less than the global depth, the hash table can shrink
-  Page *page = reinterpret_cast<Page *>(this);
-  page->RLatch();
   bool ret = true;
   uint32_t size = Size();
   for (uint32_t i = 0; i < size; i++) {
@@ -100,66 +63,39 @@ bool HashTableDirectoryPage::CanShrink() {
       break;
     }
   }
-  page->RUnlatch();
   return ret;
 }
 
 uint32_t HashTableDirectoryPage::GetLocalDepth(uint32_t bucket_idx) {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->RLatch();
   uint32_t local_depth = local_depths_[bucket_idx];
-  page->RUnlatch();
   return local_depth;
 }
 
 void HashTableDirectoryPage::SetLocalDepth(uint32_t bucket_idx, uint8_t local_depth) {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->WLatch();
   local_depths_[bucket_idx] = local_depth;
-  page->WUnlatch();
 }
 
-void HashTableDirectoryPage::IncrLocalDepth(uint32_t bucket_idx) {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->WLatch();
-  local_depths_[bucket_idx]++;
-  page->WUnlatch();
-}
+void HashTableDirectoryPage::IncrLocalDepth(uint32_t bucket_idx) { local_depths_[bucket_idx]++; }
 
-void HashTableDirectoryPage::DecrLocalDepth(uint32_t bucket_idx) {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->WLatch();
-  local_depths_[bucket_idx]--;
-  page->WUnlatch();
-}
+void HashTableDirectoryPage::DecrLocalDepth(uint32_t bucket_idx) { local_depths_[bucket_idx]--; }
 
 uint32_t HashTableDirectoryPage::GetLocalDepthMask(uint32_t bucket_idx) {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->RLatch();
   uint32_t mask = 1;
   mask = mask << local_depths_[bucket_idx];
-  page->RUnlatch();
   return mask - 1;
 }
 
 uint32_t HashTableDirectoryPage::GetLocalHighBit(uint32_t bucket_idx) {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->RLatch();
   uint32_t high_bit = 1 << local_depths_[bucket_idx];
-  page->RUnlatch();
   return high_bit;
 }
 
 uint32_t HashTableDirectoryPage::FindFirstBucket(const page_id_t &page_id) {
-  Page *page = reinterpret_cast<Page *>(this);
-  page->RLatch();
   for (uint32_t i = 0; i < Size(); i++) {
     if (bucket_page_ids_[i] == page_id) {
-      page->RUnlatch();
       return i;
     }
   }
-  page->RUnlatch();
   return Size();
 }
 
